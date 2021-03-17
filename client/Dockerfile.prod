@@ -17,7 +17,7 @@ RUN apk add openssl --no-cache
 FROM dep
 COPY --from=build /usr/src/chewiebot/client/build /usr/share/nginx/html
 COPY ./nginx/default.conf /etc/nginx/conf.d/
-COPY ./nginx/server.crt /etc/nginx/
-COPY ./nginx/server.key /etc/nginx
+#COPY ./nginx/server.crt /etc/nginx/
+#COPY ./nginx/server.key /etc/nginx
 
 EXPOSE 80
