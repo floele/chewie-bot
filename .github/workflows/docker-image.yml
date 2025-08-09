@@ -83,14 +83,15 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v2
-            - name: Copy docker-compose.yml
+            - name: Make scripts executable
+              run: chmod +x scripts/reload-nginx.sh
+            - name: Copy docker-compose.yml and scripts
               uses: appleboy/scp-action@master
               with:
                   host: ${{ secrets.sshHost }}
                   username: ${{ secrets.sshUsername }}
                   key: ${{ secrets.sshKey }}
                   port: 22
-                  source: "docker-compose.yml,docker-compose.prod.yml"
                   target: "~/chewiebot"
             - name: Docker pull and run
               uses: appleboy/ssh-action@v0.1.3
