@@ -29,11 +29,28 @@ services:
             - certbot-etc:/etc/letsencrypt
             - certbot-var:/var/lib/letsencrypt
             - web-root:/var/www/html
+            - /var/run/docker.sock:/var/run/docker.sock
+            - ./scripts/reload-nginx.sh:/reload-nginx.sh
         depends_on:
             - ui
         networks:
             - front
         command: certonly --webroot --webroot-path=/var/www/html --email magenta.fall@protonmail.com --agree-tos --no-eff-email --force-renewal -d chewiemelodies.com -d www.chewiemelodies.com
+
+    certbot-renew:
+        image: certbot/certbot
+        container_name: certbot-renew
+        volumes: 
+            - certbot-etc:/etc/letsencrypt
+            - certbot-var:/var/lib/letsencrypt
+            - web-root:/var/www/html
+            - /var/run/docker.sock:/var/run/docker.sock
+            - ./scripts/reload-nginx.sh:/reload-nginx.sh
+        entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot --webroot-path=/var/www/html --post-hook '/reload-nginx.sh'; sleep 24h & wait $${!}; done"
+        depends_on:
+            - ui
+        networks:
+            - front
 
     backend:
         image: magentafall/chewiebot:server-latest
