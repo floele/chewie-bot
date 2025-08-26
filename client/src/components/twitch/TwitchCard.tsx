@@ -13,7 +13,6 @@ import {
     InputLabel,
     InputAdornment,
     IconButton,
-    Paper,
     ButtonGroup,
     Theme,
     SnackbarCloseReason
@@ -23,10 +22,13 @@ import { makeStyles } from "tss-react/mui";
 import axios, { AxiosResponse } from "axios";
 import React, { useContext, useEffect, useState } from "react";
 import { Image } from "react-bootstrap";
-import { Save, Visibility, VisibilityOff, Check, Clear } from "@mui/icons-material";
+import { Save, Visibility, VisibilityOff, Check, Clear, Edit } from "@mui/icons-material";
 import AuthService from "../../services/authService";
 import { Alert } from "@mui/material";
-import MaterialTable from "@material-table/core";
+import { 
+    MaterialReactTable,
+    useMaterialReactTable,
+} from 'material-react-table';
 import { blue } from "@mui/material/colors";
 import { ProviderType, UserContext } from "../../contexts/userContext";
 
@@ -179,6 +181,85 @@ const TwitchCard: React.FC<any> = (props: any) => {
             <SnackbarContent className={classes.backupStatusAlert} message={backupStatusMessage} />
         </Snackbar>
     );
+
+    const table = useMaterialReactTable({
+        columns: [
+            {
+                accessorKey: 'description',
+                header: 'Name',
+                enableEditing: false,
+                sortingFn: 'alphanumeric',
+            },
+            {
+                accessorKey: 'value',
+                header: 'Value',
+                editVariant: 'text',
+                muiEditTextFieldProps: ({ cell, row }) => ({
+                    onKeyDown: (event) => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
+                            const target = event.target as HTMLInputElement;
+                            const updatedData = { ...row.original, value: target.value };
+                            axios.post("/api/settings", updatedData)
+                                .then(() => {
+                                    const newList = [...settings];
+                                    const targetIndex = newList.findIndex(el => el.key === row.original.key);
+                                    if (targetIndex !== -1) {
+                                        newList[targetIndex] = updatedData;
+                                        setSettings(newList);
+                                    }
+                                    table.setEditingRow(null);
+                                });
+                        }
+                    }
+                }),
+            },
+        ],
+        data: settings,
+        layoutMode: "grid",
+        enablePagination: false,
+        enableColumnActions: false,
+        enableColumnFilters: false,
+        enableDensityToggle: false,
+        enableFullScreenToggle: false,
+        enableHiding: false,
+        enableRowActions: true,
+        editDisplayMode: 'row',
+        positionActionsColumn: "last",
+        enableEditing: true,
+        muiTablePaperProps: {
+            elevation: 0,
+        },
+        displayColumnDefOptions: {
+            "mrt-row-actions": {
+                size: 120,
+                grow: false
+            },
+        },
+        renderRowActions: ({ row, table }) => (
+            <IconButton
+                onClick={() => table.setEditingRow(row)}            >
+                <Edit />
+            </IconButton>
+        ),
+        onEditingRowSave: ({ row, values }) => {
+            const updatedData = { ...values, key: row.original.key };
+            return axios.post("/api/settings", updatedData)
+                .then(() => {
+                    const newList = [...settings];
+                    const targetIndex = newList.findIndex(el => el.key === row.original.key);
+                    if (targetIndex !== -1) {
+                        newList[targetIndex] = updatedData;
+                        setSettings(newList);
+                        table.setEditingRow(null);
+                    }
+                });
+        },
+        initialState: {
+            sorting: [{ id: 'description', desc: false }],
+            density: "compact",
+        },
+    })
 
     return (
         <Card>
@@ -373,37 +454,7 @@ const TwitchCard: React.FC<any> = (props: any) => {
                         </Typography>
                     </Grid>
                     <Grid item>
-                        <MaterialTable
-                            columns={[
-                                { title: "Name", field: "description", defaultSort: "asc", editable: "never" },
-                                { title: "Value", field: "value" },
-                            ]}
-                            options={{
-                                paging: false,
-                                showTitle: false,
-                                actionsColumnIndex: 2,
-                                padding: "dense"
-                            }}
-                            data={settings}
-                            components={{
-                                Container: (p) => <Paper {...p} elevation={0} />,
-                            }}
-                            editable={{
-                                isEditable: (rowData) => true,
-                                isDeletable: (rowData) => false,
-                                onRowUpdate: (newData, oldData) =>
-                                    axios.post("/api/settings", newData).then((result) => {
-                                        const newList = [...settings];
-                                        // @ts-ignore
-                                        const target = newList.find((el) => el.key === oldData?.key);
-                                        if (target) {
-                                            const index = newList.indexOf(target);
-                                            newList[index] = newData;
-                                            setSettings([...newList]);
-                                        }
-                                    }),
-                            }}
-                        />
+                        <MaterialReactTable table={table} />
                     </Grid>
                 </Grid>
             </CardContent>
