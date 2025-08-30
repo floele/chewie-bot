@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { makeStyles } from "tss-react/mui";
 import axios from "axios";
-import MaterialTable from "@material-table/core";
 import {
     Grid, TextField, Button, Box, Card,
-    Popover, Paper, ThemeProvider, Tabs, Tab, Chip, Theme, createTheme
+    Popover, ThemeProvider, Tabs, Tab, Chip, Theme, createTheme
 } from "@mui/material";
-import { Autocomplete, AutocompleteInputChangeReason } from "@mui/material";
+import { Autocomplete } from "@mui/material";
 import SaveIcon from "@mui/icons-material/Save";
-import { ArrowDownward, ArrowUpward } from "@mui/icons-material";
+import { ArrowDownward, ArrowUpward, Edit, Delete, Add, Attribution } from "@mui/icons-material";
+import {
+    MaterialReactTable,
+    useMaterialReactTable,
+} from 'material-react-table';
 
 // Use "condensed" display for rows
 const createCondensedTheme = (theme: any) => createTheme(theme, {
@@ -71,7 +74,7 @@ const EditSonglist: React.FC<any> = (props: any) => {
     const [userlist, setUserlist] = useState([] as AutocompleteUser[]);
     const [selectedTab, setSelectedTab] = useState(0);
 
-    const [popupAnchor, setPopupAnchor] = useState<HTMLButtonElement | undefined>(undefined);
+    const [popupAnchor, setPopupAnchor] = useState<HTMLElement | undefined>(undefined);
     const [currentRowForAction, setCurrentRowForAction] = useState<RowData>();
     const open = Boolean(popupAnchor);
 
@@ -101,7 +104,7 @@ const EditSonglist: React.FC<any> = (props: any) => {
     const updateSong = (newData: RowData, oldData: RowData | undefined) => axios.post("/api/songlist", newData).then((result) => {
         const newSonglist = [...songlist];
         // @ts-ignore
-        const target = newSonglist.find((el) => el.id === oldData.tableData.id);
+        const target = newSonglist.find((el) => el.id === oldData.id);
         if (target) {
             const index = newSonglist.indexOf(target);
             newSonglist[index] = newData;
@@ -142,7 +145,276 @@ const EditSonglist: React.FC<any> = (props: any) => {
         return obj && categories.indexOf(obj) === index;
     }
 
-    const openAttributionPopup = (button: HTMLButtonElement, song: RowData) => {
+    const categoryTableInstance = useMaterialReactTable({
+        columns: [
+            {
+                accessorKey: 'name',
+                header: 'Category'
+            }
+        ],
+        data: categories,
+        enableSorting: false,
+        enablePagination: false,
+        enableColumnActions: false,
+        enableDensityToggle: false,
+        enableColumnFilters: false,
+        enableHiding: false,
+        enableTopToolbar: true,
+        enableRowActions: true,
+        editDisplayMode: 'row',
+        enableEditing: true,
+        positionActionsColumn: 'last',
+        renderRowActions: ({ row }) => (
+            <Box sx={{ display: 'flex' }}>
+                <Button
+                    disabled={hasIndex(categories, row.original, 0)}
+                    onClick={() => onCategoryMoved([row.original], -1)}>
+                    <ArrowUpward />
+                </Button>
+                <Button
+                    disabled={hasIndex(categories, row.original, categories.length - 1)}
+                    onClick={() => onCategoryMoved([row.original], 1)}>
+                    <ArrowDownward />
+                </Button>
+                <Button
+                    color="primary"
+                    onClick={() => categoryTableInstance.setEditingRow(row)}>
+                    <Edit />
+                </Button>
+                <Button
+                    color="error"
+                    onClick={() => {
+                        if (window.confirm('Are you sure you want to delete this category?')) {
+                            axios.post("/api/songlist/categories/delete", row.original).then(() => {
+                                const newCategories = [...categories];
+                                const target = newCategories.find((el) => el.id === row.original.id);
+                                if (target) {
+                                    const index = newCategories.indexOf(target);
+                                    newCategories.splice(index, 1);
+                                    setCategories([...newCategories]);
+                                }
+                            });
+                        }
+                    }}>
+                        <Delete />
+                    </Button>
+            </Box>
+        ),
+        renderTopToolbarCustomActions: () => (
+            <Button
+                color="primary"
+                onClick={() => {
+                    const newCategory = { name: 'New Category', sortOrder: categories.length + 1 };
+                    axios.post("/api/songlist/categories/add", newCategory).then((result) => {
+                        const newList = [...categories, result.data as CategoryData];
+                        setCategories(newList);
+                    });
+                }}
+                startIcon={<Add />}
+            >
+                Add Category
+            </Button>
+        ),
+        onEditingRowSave: ({ row, values }) => {
+            const updatedData = { ...row.original, ...values };
+            return axios.post("/api/songlist/categories/update", updatedData).then(() => {
+                const newCategories = [...categories];
+                const target = newCategories.find((el) => el.id === row.original.id);
+                if (target) {
+                    const index = newCategories.indexOf(target);
+                    newCategories[index] = updatedData;
+                    setCategories([...newCategories]);
+                }
+                categoryTableInstance.setEditingRow(null);
+            });
+        },
+        muiTablePaperProps: { 
+            elevation: 0,
+            sx: { marginTop: 0 },
+            className: classes.tableContainer
+        },
+        initialState: { 
+            density: "compact",
+        },
+    });
+
+    const songTableInstance = useMaterialReactTable({
+        columns: [
+            {
+                accessorKey: 'album',
+                header: 'Origin',
+                Edit: ({ row, column, cell, table }) => (
+                    <Autocomplete
+                        freeSolo
+                        size="small"
+                        fullWidth
+                        defaultValue={cell.getValue<string>() ?? ""}
+                        options={songlist.map((x) => x.album).filter((v,i,a) => v && a.indexOf(v) === i)}
+                        onInputChange={(event: any, newValue: string | null) => row._valuesCache[column.id] = newValue ?? ""}
+                        renderInput={(params) => (
+                            <TextField {...params} placeholder="Origin" fullWidth size="small" />
+                        )}
+                    />
+                ),
+            },
+            {
+                accessorKey: 'title',
+                header: 'Title',
+            },
+            {
+                accessorKey: 'artist',
+                header: 'Artist',
+                Edit: ({ row, column, cell, table }) => (
+                    <Autocomplete
+                        freeSolo
+                        size="small"
+                        fullWidth
+                        defaultValue={cell.getValue<string>() ?? ""}
+                        options={songlist.map((x) => x.artist).filter((v,i,a) => v && a.indexOf(v) === i)}
+                        onInputChange={(event: any, newValue: string | null) => row._valuesCache[column.id] = newValue ?? ""}
+                        renderInput={(params) => (
+                            <TextField {...params} placeholder="Artist" fullWidth />
+                        )}
+                    />
+                ),
+            },
+            {
+                accessorKey: 'categoryId',
+                header: 'Genre',
+                editVariant: 'select',
+                editSelectOptions: categories.map(c => ({ value: c.id, label: c.name })),
+                Cell: ({ cell }) => {
+                    const category = categories.find(c => c.id === cell.getValue<number>());
+                    return category?.name ?? '';
+                },
+            },
+            {
+                accessorKey: 'songTags',
+                header: 'Tags',
+                Cell: ({ cell }) => (
+                    <Box className={classes.tagContainer}>
+                        {cell.getValue<string[]>()?.map((tag) => (
+                            <li key={tag}>
+                                <Chip size="small" label={tag} className={classes.chip} />
+                            </li>
+                        ))}
+                    </Box>
+                ),
+                Edit: ({ row, column, cell, table }) => (
+                    <Autocomplete
+                        multiple
+                        freeSolo
+                        size="small"
+                        defaultValue={cell.getValue<string[]>() ?? []}
+                        options={tags.map((option) => option.name)}
+                        onChange={(_, newValue) => row._valuesCache[column.id] = newValue }
+                        renderTags={(value: string[], getTagProps) =>
+                            value.map((option: string, index: number) => (
+                                <Chip size="small" variant="outlined" label={option} {...getTagProps({ index })} />
+                            ))
+                        }
+                        onInputChange={(event, newValue, reason) => {
+                            // Create new tag when user types ";"
+                            const newTags = newValue.split(";");
+                            if (newTags.length > 1) {
+                                const newTagsList = newTags.filter(x => x !== "");
+                                row._valuesCache[column.id] = row._valuesCache[column.id].concat(newTagsList);
+                            }
+                        }}
+                        renderInput={(params) => (
+                            <TextField {...params} label="" placeholder="Tags"
+                                onBlur={e => {
+                                    // Create new tag when input focus is lost
+                                    const newTags = e.target.value.split(";");
+                                    if (newTags.length && row._valuesCache[column.id]) {
+                                        const newTagsList = newTags.filter(x => x !== "");
+                                        row._valuesCache[column.id] = row._valuesCache[column.id]?.concat(newTagsList);
+                                    }
+                                }}
+                            />
+                        )}
+                    />
+                ),
+            },
+        ],
+        data: songlist,
+        enablePagination: true,
+        initialState: { 
+            pagination: { pageIndex: 0, pageSize: 50 },
+            sorting: [{ id: 'album', desc: false }],
+            density: "compact",
+        },
+        enableEditing: true,
+        editDisplayMode: 'row',
+        enableRowActions: true,
+        positionActionsColumn: 'last',
+        renderRowActions: ({ row }) => (
+            <Box sx={{ display: 'flex' }}>
+                <Button
+                    onClick={(event) => openAttributionPopup(event.currentTarget, row.original)}
+                    color={row.original.attributedUserId ? "primary" : "inherit"}>
+                    <Attribution />
+                </Button>
+                <Button
+                    color="primary"
+                    onClick={() => songTableInstance.setEditingRow(row)}>
+                    <Edit />
+                </Button>
+                <Button
+                    color="error"
+                    onClick={() => {
+                        if (window.confirm('Are you sure you want to delete this song?')) {
+                            axios.post("/api/songlist/delete", row.original).then(() => {
+                                const newSonglist = [...songlist];
+                                const target = newSonglist.find((el) => el.id === row.original.id);
+                                if (target) {
+                                    const index = newSonglist.indexOf(target);
+                                    newSonglist.splice(index, 1);
+                                    setSonglist([...newSonglist]);
+                                }
+                            });
+                        }
+                    }}>
+                    <Delete />
+                </Button>
+            </Box>
+        ),
+        renderTopToolbarCustomActions: () => (
+            <Button
+                color="primary"
+                onClick={() => {
+                    const newSong = { title: '', album: '', artist: '', categoryId: categories[0]?.id, songTags: [] };
+                    axios.post("/api/songlist/add", newSong).then((result) => {
+                        const newList = [...songlist, result.data as RowData];
+                        setSonglist(newList);
+                        // Start editing the new row
+                        const row = songTableInstance.getRow(result.data.id);
+                        if (row) {
+                            songTableInstance.setEditingCell(null);
+                        }
+                    });
+                }}
+                startIcon={<Add />}
+            >
+                Add Song
+            </Button>
+        ),
+        onEditingRowSave: ({ row, values }) => {
+            const updatedData = { ...row.original, ...values };
+            return updateSong(updatedData, row.original).then(() => {
+                songTableInstance.setEditingRow(null);
+            });
+        },
+        muiTablePaperProps: { 
+            elevation: 0,
+            sx: { marginTop: 0 },
+            className: classes.tableContainer
+        },
+        enableColumnFilters: true,
+        enableGlobalFilter: true,
+    });
+
+    const openAttributionPopup = (button: HTMLElement, song: RowData) => {
         setPopupAnchor(button);
         setCurrentRowForAction(song);
         if (song.attributedUserId) {
@@ -192,205 +464,7 @@ const EditSonglist: React.FC<any> = (props: any) => {
             </Box>
         </Popover>;
 
-        const categoryTable = <MaterialTable
-            columns = {[
-                { title: "Category", field: "name", customSort: () => 0 }
-            ]}
-            options = {{
-                paging: false,
-                maxColumnSort: 0,
-                actionsColumnIndex: 1,
-                showTitle: false,
-                search: false,
-                toolbar: true
-            }}
-            actions={[
-                rowData => ({
-                    icon: () => <ArrowUpward />,
-                    tooltip: "Move up",
-                    disabled: hasIndex(categories, rowData, 0),
-                    onClick: (event, data) => (data as CategoryData[]).length ? onCategoryMoved(data as CategoryData[], -1) : onCategoryMoved([ data as CategoryData ], -1)
-                }),
-                rowData => ({
-                    icon: () => <ArrowDownward />,
-                    tooltip: "Move down",
-                    disabled: hasIndex(categories, rowData, categories.length - 1),
-                    onClick: (event, data) => (data as CategoryData[]).length ? onCategoryMoved(data as CategoryData[], 1) : onCategoryMoved([ data as CategoryData ], 1)
-                }),
-            ]}
-            data = {categories}
-            editable = {
-                {
-                    isEditable: rowData => true,
-                    isDeletable: rowData => true,
-                    onRowAdd: (newData) => axios.post("/api/songlist/categories/add", newData).then((result) => {
-                        const newList = [...categories, result.data as CategoryData];
-                        setCategories(newList);
-                    }),
-                    onRowUpdate: (newData, oldData) => axios.post("/api/songlist/categories/update", newData).then((result) => {
-                        const newCategories = [...categories];
-                        // @ts-ignore
-                        const target = newCategories.find((el) => el.id === oldData.tableData.id);
-                        if (target) {
-                            const index = newCategories.indexOf(target);
-                            newCategories[index] = newData;
-                            setCategories([...newCategories]);
-                        }
-                    }),
-                    onRowDelete: oldData => axios.post("/api/songlist/categories/delete", oldData).then((result) => {
-                        const newCategories = [...categories];
-                        // @ts-ignore
-                        const target = newCategories.find((el) => el.id === oldData.id);
-                        if (target) {
-                            const index = newCategories.indexOf(target);
-                            newCategories.splice(index, 1);
-                            setCategories([...newCategories]);
-                        }
-                    })
-                }
-            }
-            components={{
-                Container: p => <Paper {...p} elevation={0} className={classes.tableContainer} style={{marginTop: 0}} />
-            }}
-            />;
 
-        const songlistTable = <MaterialTable
-            columns = {[
-                {
-                    title: "Origin", field: "album", defaultSort: "asc",
-                    editComponent: p => (
-                        <Autocomplete
-                            id="song-origin"
-                            freeSolo
-                            size="small"
-                            fullWidth
-                            defaultValue={p.value ?? ""}
-                            inputValue={p.value ?? ""}
-                            /* Use unique values for autocomplete */
-                            options={songlist.map((x) => x.album).filter((v,i,a) => v && a.indexOf(v) === i)}
-                            onInputChange={(event: any, newValue: string | null) => p.onChange(newValue)}
-                            renderInput={(params: any) => (
-                                <TextField {...params} placeholder="Origin" fullWidth size="small" />
-                            )}
-                        />)
-                },
-                { title: "Title", field: "title" },
-                {
-                    title: "Artist", field: "artist",
-                    editComponent: p => (
-                        <Autocomplete
-                            id="song-artist"
-                            freeSolo
-                            size="small"
-                            fullWidth
-                            defaultValue={p.value ?? ""}
-                            inputValue={p.value ?? ""}
-                            /* Use unique values for autocomplete */
-                            options={songlist.map((x) => x.artist).filter((v,i,a) => v && a.indexOf(v) === i)}
-                            onInputChange={(event: any, newValue: string | null) => p.onChange(newValue)}
-                            renderInput={(params: any) => (
-                                <TextField {...params} placeholder="Artist" fullWidth />
-                            )}
-                        />)
-                },
-                { title: "Genre", field: "categoryId", lookup: Object.fromEntries(categories.map(e => [e.id, e.name])) },
-                {
-                    title: "Tags", field: "songTags",
-                    render: rowData =>
-                        (<Box className={classes.tagContainer}>
-                        {rowData.songTags?.map((data) => {
-                                return (
-                                <li key={data}>
-                                    <Chip size="small" label={data} className={classes.chip} />
-                                </li>);
-                        })}
-                        </Box>),
-                    editComponent: p => (
-                        <Autocomplete
-                            multiple
-                            id="song-tags"
-                            options={tags.map((option) => option.name)}
-                            defaultValue={p.value ?? []}
-                            value={p.value ?? []}
-                            freeSolo
-                            size="small"
-                            onChange={(event: any, newValue: string[] | null) => p.onChange(newValue)}
-                            renderTags={(value: string[], getTagProps) =>
-                                value.map((option: string, index: number) => (
-                                    <Chip size="small" variant="outlined" label={option} {...getTagProps({ index })} />
-                                ))
-                            }
-                            onInputChange={(event: any, newValue: string, reason: AutocompleteInputChangeReason) => {
-                                // Create new tag when user types ";" (we should allow spaces in tags btw)
-                                const newTags = newValue.split(";");
-                                if (newTags.length > 1) {
-                                    const newTagsList = newTags.filter(x => x !== "");
-                                    p.onChange(p.value ? p.value.concat(newTagsList) : newTagsList);
-                                }
-                            }}
-                            renderInput={(params) => (
-                                <TextField {...params} label="" placeholder="Tags"
-                                    onBlur={e => {
-                                        // Create new tag when input focus is lost
-                                        const newTags = e.target.value.split(";");
-                                        if (newTags.length) {
-                                            const newTagsList = newTags.filter(x => x !== "");
-                                            p.onChange(p.value ? p.value.concat(newTagsList) : newTagsList);
-                                        }
-                                    }}
-                                />
-                            )}
-                        />)
-                },
-            ]}
-            options = {{
-                paging: true,
-                pageSize: 50,
-                pageSizeOptions: [50, 100, 200],
-                actionsColumnIndex: 5,
-                showTitle: false,
-                search: true,
-                addRowPosition: "first",
-                filtering: true
-            }}
-            actions={[
-                rowData => ({
-                    icon: "attribution",
-                    iconProps: rowData.attributedUserId ? { color: "primary" } : undefined,
-                    tooltip: "Attribute to user",
-                    onClick: (event, r) => {
-                        if ((r as RowData).title !== undefined) {
-                            openAttributionPopup(event.currentTarget, r as RowData);
-                        }
-                    }
-                })
-            ]}
-            data = {songlist}
-            editable = {
-                {
-                    isEditable: rowData => true,
-                    isDeletable: rowData => true,
-                    onRowAdd: (newData) => axios.post("/api/songlist/add", newData).then((result) => {
-                        const newList = [...songlist, result.data as RowData];
-                        setSonglist(newList);
-                    }),
-                    onRowUpdate: updateSong,
-                    onRowDelete: oldData => axios.post("/api/songlist/delete", oldData).then((result) => {
-                        const newSonglist = [...songlist];
-                        // @ts-ignore
-                        const target = newSonglist.find((el) => el.id === oldData.id);
-                        if (target) {
-                            const index = newSonglist.indexOf(target);
-                            newSonglist.splice(index, 1);
-                            setSonglist([...newSonglist]);
-                        }
-                    })
-                }
-            }
-            components={{
-                Container: p => <Paper {...p} elevation={0} className={classes.tableContainer} style={{marginTop: 0}} />
-            }}
-        />;
 
     return <Box>
             {attributionPopover}
@@ -404,7 +478,11 @@ const EditSonglist: React.FC<any> = (props: any) => {
                           <Tab label={"Categories"} value={1} />
                     </Tabs>
 
-                    {selectedTab === 0 ? songlistTable : categoryTable}
+                    {selectedTab === 0 ? (
+                        <MaterialReactTable table={songTableInstance} />
+                    ) : (
+                        <MaterialReactTable table={categoryTableInstance} />
+                    )}
                 </ThemeProvider>
             </Card>
         </Box>;
